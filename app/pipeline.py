@@ -17,9 +17,112 @@ from PIL import Image
 
 # ─── Photo EXIF extraction ──────────────────────────────────────────────────
 
-def extract_photo_metadata(img_path: str) -> dict:
+def _parse_gps_from_exif_bytes(raw_exif_bytes: bytes) -> tuple:
+    """
+    Parse GPS coordinates from raw EXIF bytes (e.g. heif.info['exif']).
+    Returns (lat, lon) as floats, or (None, None) on failure.
+    """
+    try:
+        import piexif
+        import struct
+
+        # Skip 'Exif\x00\x00' prefix if present
+        if raw_exif_bytes.startswith(b"Exif\x00\x00"):
+            tiff = raw_exif_bytes[6:]
+        else:
+            tiff = raw_exif_bytes
+
+        # Determine byte order
+        byte_order = tiff[0:2]
+        swapped = byte_order == b"II"
+
+        def u16(off):
+            return struct.unpack("<H" if swapped else ">H", tiff[off:off + 2])[0]
+
+        def u32(off):
+            return struct.unpack("<I" if swapped else ">I", tiff[off:off + 4])[0]
+
+        magic = u16(2)
+        if magic != 0x002A:
+            return None, None
+
+        ifd0_offset = u32(4)
+        num_entries = u16(ifd0_offset)
+
+        gps_ifd_offset = None
+        for i in range(num_entries):
+            base = ifd0_offset + 2 + i * 12
+            tag = u16(base)
+            if tag == 34853:  # GPS IFD tag
+                gps_ifd_offset = u32(base + 8)
+                break
+
+        if gps_ifd_offset is None:
+            return None, None
+
+        gps_num = u16(gps_ifd_offset)
+        lat, lon = None, None
+
+        for i in range(gps_num):
+            base = gps_ifd_offset + 2 + i * 12
+            tag = u16(base)
+            type_id = u16(base + 2)
+            count = u32(base + 4)
+            value_off = u32(base + 8)
+
+            if tag in (2, 4) and type_id == 5:  # Latitude/Longitude as RATIONAL
+                num = u32(value_off)
+                den = u32(value_off + 4)
+                coord = float(num) / float(den)
+            elif tag == 1 and type_id == 2:  # LatitudeRef
+                ref = tiff[value_off:value_off + 1]
+                coord = ref.decode("ascii", errors="replace")
+            elif tag == 3 and type_id == 2:  # LongitudeRef
+                ref = tiff[value_off:value_off + 1]
+                coord = ref.decode("ascii", errors="replace")
+            else:
+                continue
+
+            if tag == 1:
+                lat = coord  # 'N' or 'S'
+            elif tag == 2 and isinstance(coord, float):
+                lat = coord if lat == "N" else -coord
+                lat, lat_ref = None, None  # consumed
+            elif tag == 3:
+                lon = coord  # 'E' or 'W'
+            elif tag == 4 and isinstance(coord, float):
+                lon = coord if lon == "E" else -coord
+                break
+
+        return lat, lon
+    except Exception:
+        return None, None
+
+
+def _parse_datetime_from_exif_bytes(raw_exif_bytes: bytes) -> str:
+    """
+    Parse DateTime from raw EXIF bytes. Returns 'YYYY:MM:DD HH:MM:SS' string or None.
+    """
+    try:
+        import piexif
+        exif_dict = piexif.load(raw_exif_bytes)
+        zeroth = exif_dict.get("0th", {})
+        dt = zeroth.get(36867) or zeroth.get(306)
+        if dt and isinstance(dt, bytes):
+            dt = dt.decode("ascii", errors="replace")
+        return dt or None
+    except Exception:
+        return None
+
+
+def extract_photo_metadata(img_path: str, heic_exif_bytes: bytes = None) -> dict:
     """
     Robust EXIF extraction from JPEG/HEIC/PNG.
+
+    For HEIC-converted JPEG files, pass heic_exif_bytes extracted from the original
+    HEIC file (via heif.info['exif']) so GPS/DateTime can be parsed even when
+    PIL's _getexif() returns None on pillow-heif output images.
+
     Returns dict with: datetime, lat, lon, camera_make, camera_model,
     orientation, gps_raw, width, height.
     """
@@ -29,8 +132,24 @@ def extract_photo_metadata(img_path: str) -> dict:
         return _empty_meta()
 
     raw_exif = img._getexif()
+    if raw_exif is None and heic_exif_bytes:
+        # Fallback: parse raw EXIF bytes directly (needed for HEIC-converted JPEGs
+        # where pillow-heif output doesn't carry EXIF into the saved JPEG)
+        lat, lon = _parse_gps_from_exif_bytes(heic_exif_bytes)
+        datetime = _parse_datetime_from_exif_bytes(heic_exif_bytes)
+        return {
+            "datetime": datetime,
+            "lat": lat,
+            "lon": lon,
+            "camera_make": None,
+            "camera_model": None,
+            "orientation": None,
+            "gps_raw": None,
+            "width": img.width,
+            "height": img.height,
+        }
+
     if raw_exif is None:
-        # No EXIF at all — still return dimensions
         return {
             **_empty_meta(),
             "width": img.width,
@@ -159,24 +278,26 @@ def extract_video_metadata(video_path: str) -> dict:
 
 def heic_to_jpeg(heic_path: str, jpeg_path: str, quality: int = 90) -> bool:
     """
-    Convert a HEIC file to JPEG.
+    Convert a HEIC file to JPEG using pillow-heif.
     Returns True on success, False if pillow-heif is unavailable or conversion fails.
+    The original HEIC EXIF (including GPS) is embedded in the output JPEG so it can be
+    read back with PIL's _getexif().
     """
     try:
         import pillow_heif
     except ImportError:
-        # pillow-heif not installed — try using Image directly (some HEICs PIL can open)
-        try:
-            with Image.open(heic_path) as img:
-                img.save(jpeg_path, "JPEG", quality=quality)
-            return True
-        except Exception:
-            return False
+        return False
 
     try:
-        heif_file = pillow_heif.open(heic_path)
+        heif_file = pillow_heif.open_heif(heic_path)
         image = heif_file.to_pillow()
-        image.save(jpeg_path, "JPEG", quality=quality)
+        # Embed the original HEIC's raw EXIF bytes directly — this preserves GPS data
+        # (passing raw bytes is more reliable than wrapping in Image.Exif)
+        raw_exif_bytes = heif_file.info.get("exif")
+        if raw_exif_bytes:
+            image.save(jpeg_path, "JPEG", quality=quality, exif=raw_exif_bytes)
+        else:
+            image.save(jpeg_path, "JPEG", quality=quality)
         return True
     except Exception:
         return False
@@ -201,7 +322,7 @@ def fix_orientation_and_save(img_path: str, output_path: str, quality: int = 90)
     # Decision tree: should we physically rotate?
     if orientation == 6 and img.height > img.width:
         # Orientation=6 (Rotate CW 90°) AND raw pixels already portrait (h>w)
-        # → viewer double-rotates. Fix: physically rotate 90° CW → then save with orient=1
+        # → viewer would double-rotate. Fix: physically rotate 90° CW → then save with orient=1
         img = img.transpose(Image.ROTATE_90)
         was_rotated = True
     elif orientation in (3, 8) and img.width > img.height:
@@ -342,13 +463,21 @@ def extract_metadata(media_path: str) -> dict:
         )
     else:
         # Photo (JPEG, PNG, WebP, HEIC)
-        # For HEIC files not yet converted, try conversion first
+        heic_exif_bytes = None
+
+        # For HEIC files: extract raw EXIF bytes before conversion, then convert
         if path_lower.endswith(".heic"):
+            import pillow_heif
+            try:
+                heif_file = pillow_heif.open_heif(media_path)
+                heic_exif_bytes = heif_file.info.get("exif")
+            except Exception:
+                pass
             jpeg_path = media_path + ".jpg"
             if heic_to_jpeg(media_path, jpeg_path):
-                media_path = jpeg_path  # use the converted JPEG for EXIF
+                media_path = jpeg_path  # use the converted JPEG for dimensions
 
-        meta = extract_photo_metadata(media_path)
+        meta = extract_photo_metadata(media_path, heic_exif_bytes=heic_exif_bytes)
         datetime_str = parse_exif_datetime(meta.get("datetime"))
         lat, lon = meta.get("lat"), meta.get("lon")
         message = (

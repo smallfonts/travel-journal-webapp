@@ -78,12 +78,18 @@
 - [x] **Poll failed: Can't find variable: jobId** — `showResults(data, jobId)` now receives `jobId` as second argument; version badge refresh confirms page is not stale
 - [x] Verify: 96 tests passing, pushed at `1e8e393`
 
-### Known Issues (Stage 9)
-- [x] **MochiMon section position** — moved to bottom (after Travel Timeline) in DAILY_TEMPLATE; `update_mochimon_summary` appends at end of file if marker not found
-- [x] **Leaflet map marker** — `update_leaflet_coords()` fires when GPS photo is added to existing journal (confirmed in pipeline line 540)
-- [x] **Caption enrichment** — `enrich_caption_with_vision()` called in pipeline (line 548); MiniMax vision API on real photos
-- [x] **MochiMon summary** — `generate_daily_mochimon_summary()` called at end of job (line 632); `update_mochimon_summary()` writes to journal
-- [x] **End-to-end test** — 3 uploads tested (GPS photo → vault → journal entry); journal correctly updated with caption, media block, MochiMon summary; AI DreamScape gracefully skipped when MiniMax quota exceeded; robust null-handling in dreamscape.py confirmed
+## Stage 10 — HEIC Bug Fixes + Upload Deduplication
+- [x] **HEIC GPS/EXIF extraction fixed** — `heic_to_jpeg()` was calling `pillow_heif.open(path)` (wrong API); corrected to `pillow_heif.open_heif(path)` which returns a `HeifFile` with `.info['exif']`
+- [x] **EXIF bytes preserved in JPEG** — raw EXIF bytes from `heif.info['exif']` are now embedded directly via `image.save(jpeg_path, "JPEG", exif=raw_exif_bytes)`, ensuring `_getexif()` returns GPS metadata on the converted file
+- [x] **GPS parsing fallback** — added `_parse_gps_from_exif_bytes()` helper to parse GPS IFD directly from raw EXIF bytes (RATIONAL type 5 → degrees) when `_getexif()` returns None
+- [x] **DateTime parsing fallback** — added `_parse_datetime_from_exif_bytes()` via piexif for when EXIF DateTime tag is present but not normalised by `_getexif()`
+- [x] **Upload deduplication** — `create_job()` now deduplicates incoming files by `(filename, size)` tuple; skips duplicate uploads within the same batch and stores only one entry in `job_files`
+- [x] **pillow_heif API confirmed** — v0.20.0 uses `open_heif()`, NOT `open()`; `HeifFile` has no `has_exif` attribute; raw bytes in `heif.info['exif']` are reliable
+- [x] **piexif GPS key types** — GPS dict uses integer keys (1=N/S, 2=lat, 3=E/W, 4=lon), not string keys; `gps.get("1")` always returned None
+- [x] **Portrait photos displayed as landscape (orientation bug)** — `fix_orientation_and_save()` in `app/pipeline.py` had the rotation condition inverted: `orientation == 6 and img.width > img.height` caused portrait photos (h>w) with orient=6 to skip the physical rotation step, then saved with orient=1 — leaving them appearing as landscape in the journal. Corrected back to `img.height > img.width` so portrait photos are physically rotated 90° CW before saving with orient=1
+- [x] **GPS data not added to leaflet map (missing markers)** — `update_leaflet_coords()` in `app/journal.py` only updated the `coordinate: [lat, lon]` center point but never added individual `marker:` entries per photo. Fixed: now appends a `marker: default, {lat}, {lon},{anchor},{label},,` line inside the ```leaflet block for every photo with GPS, building an anchor link to the photo's time slot. Also added `time_str` and `location_label` parameters to construct meaningful marker labels. Call site in `main.py` now passes `time_str=time_str` and `location_label=meta["location_string"]`
+- [x] **Version bumped to v1.0.5** — `APP_VERSION` in `main.py` line 250
+- [x] Verify: 96 tests passing, pushed at `a3f7c12`
 
 ---
 

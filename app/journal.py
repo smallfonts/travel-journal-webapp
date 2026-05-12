@@ -480,22 +480,77 @@ def get_mochimon_summary(journal_path: str) -> Optional[str]:
     return " ".join(lines)
 
 
-def update_leaflet_coords(journal_path: str, lat: float, lon: float) -> bool:
+def update_leaflet_coords(journal_path: str, lat: float, lon: float,
+                            time_str: str = None, location_label: str = None) -> bool:
     """
-    Update the leaflet coordinate block in the journal entry.
-    Replaces the coordinate line with updated lat/lon.
+    Update the leaflet coordinate block AND add a marker for this photo.
+
+    - Replaces the coordinate: [...] line with the new lat/lon.
+    - Appends a new marker: line inside the ```leaflet block.
+
+    Marker format (per vault template convention):
+        marker: default, {lat}, {lon},{anchor}, {label},,
+
+    Args:
+        journal_path: path like .../Travel/Singapore/2026-05-12 Singapore.md
+        lat, lon: GPS coordinates for this photo
+        time_str: "HH:MM" from EXIF — used to build anchor link and label
+        location_label: human-readable location name (from reverse geocoding)
+
     Returns True if updated, False if no leaflet block found.
     """
     content = read_journal(journal_path)
     if content is None:
         return False
 
-    # Match: coordinate: [lat, lon] or coordinate: [lat,lon]
-    leaflet_pattern = re.compile(r"coordinate:\s*\[[\d.,\-]+\]")
+    # ── 1. Update the coordinate: [lat, lon] center point ──────────────────
+    coord_pattern = re.compile(r"coordinate:\s*\[[\d.,\-]+\]")
     new_coord = f"coordinate: [{lat}, {lon}]"
 
-    if leaflet_pattern.search(content):
-        content = leaflet_pattern.sub(new_coord, content, count=1)
-        write_journal(journal_path, content)
-        return True
-    return False
+    if not coord_pattern.search(content):
+        return False
+    content = coord_pattern.sub(new_coord, content, count=1)
+
+    # ── 2. Append a marker: line inside the ```leaflet block ──────────────
+    # Extract country and date from journal_path to build anchor link.
+    # Path format: .../Travel/<Country>/<date> <Country>.md
+    country = None
+    date_str = None
+    try:
+        parts = journal_path.replace("\\", "/").split("/")
+        travel_idx = parts.index("Travel")
+        country_raw = parts[travel_idx + 1]
+        country = country_raw.replace("-", " ")  # "Singapore" stored as "Singapore", "South-Korea" → "South Korea"
+        fname = parts[travel_idx + 2]  # "2026-05-12 Singapore.md"
+        date_str = fname.split(" ")[0]  # "2026-05-12"
+    except (IndexError, ValueError):
+        pass
+
+    # Build anchor and label for the marker
+    anchor = f"Travel/{country_raw}/{date_str} {country_raw}.md"
+    if time_str:
+        # Convert "10:30" → "10:30 AM" label
+        try:
+            h, m = int(time_str.split(":")[0]), int(time_str.split(":")[1])
+            ampm = "AM" if h < 12 else "PM"
+            hour_12 = h if h <= 12 else h - 12
+            label = f"{hour_12}:{m:02d}{ampm}"
+        except (ValueError, IndexError):
+            label = time_str
+        anchor = f"{anchor}#{time_str}"
+    else:
+        label = location_label or ""
+
+    marker_line = f"marker: default, {lat}, {lon},{anchor},{label},,"
+
+    # Find the ```leaflet block and append marker inside it
+    leaflet_block_match = re.search(r"(```leaflet\n)(.*?)(\n```)", content, re.DOTALL)
+    if leaflet_block_match:
+        block_content = leaflet_block_match.group(2)
+        # Avoid duplicate markers for the same location/time
+        if marker_line not in block_content:
+            new_block = block_content.rstrip() + "\n" + marker_line + "\n"
+            content = content[:leaflet_block_match.start(2)] + new_block + content[leaflet_block_match.end(2):]
+
+    write_journal(journal_path, content)
+    return True

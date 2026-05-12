@@ -64,7 +64,13 @@ def create_job(files_info: list, caption: str, date_override: Optional[str], pro
             "INSERT INTO jobs (job_id, caption, date_override, process_now, files_json) VALUES (?, ?, ?, ?, ?)",
             (job_id, caption, date_override, int(process_now), json.dumps([]))
         )
+        seen = set()
         for fi in files_info:
+            # Deduplicate within the same upload batch: same filename+size = same logical file
+            key = (fi["filename"], fi["size"])
+            if key in seen:
+                continue
+            seen.add(key)
             db.execute(
                 "INSERT INTO job_files (job_id, filename, size, ctype, cache_path) VALUES (?, ?, ?, ?, ?)",
                 (job_id, fi["filename"], fi["size"], fi["ctype"], fi["cache_path"])
@@ -241,7 +247,7 @@ UPLOAD_FORM = """<!DOCTYPE html>
   const filesData = [];
 
   // Dynamic version — kept in sync with the badge in the HTML
-  const APP_VERSION = '1.0.1';
+  const APP_VERSION = '1.0.5';
   const badge = document.getElementById('version-badge');
   if (badge) badge.textContent = `v${APP_VERSION} – loading…`;
 
@@ -521,12 +527,18 @@ async def api_upload(
                 update_file_status(job_id, fi["filename"], "processing",
                     f"Created new journal: Travel/{safe_country}/{date_str} {safe_country}.md")
             else:
-                # Update leaflet map if this photo has better GPS than the template coords
+                # Update leaflet map if this photo has GPS
                 if meta.get("lat") is not None and meta.get("lon") is not None:
-                    updated = update_leaflet_coords(journal_path, meta["lat"], meta["lon"])
+                    updated = update_leaflet_coords(
+                        journal_path,
+                        meta["lat"],
+                        meta["lon"],
+                        time_str=time_str,
+                        location_label=meta.get("location_string") or "",
+                    )
                     if updated:
                         update_file_status(job_id, fi["filename"], "processing",
-                            f"📍 Map marker updated with new coordinates")
+                            f"📍 Map marker added for {meta.get('location_string', 'this location')}")
 
             # ─── Caption enrichment via MiniMax vision ───────────────────
             update_file_status(job_id, fi["filename"], "processing", "Enriching caption with AI vision...")
