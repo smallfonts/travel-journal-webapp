@@ -163,6 +163,7 @@ UPLOAD_FORM = """<!DOCTYPE html>
   <header>
     <h1>📸 Travel Journal</h1>
     <p>Upload photos and videos — they'll be filed into your Obsidian vault automatically.</p>
+    <span id="version-badge" style="display:inline-block;margin-top:6px;padding:2px 8px;background:#ede9fe;color:#6366f1;border-radius:999px;font-size:0.7rem;font-weight:600;">v1.0.1</span>
   </header>
 
   <form id="upload-form" enctype="multipart/form-data">
@@ -237,6 +238,11 @@ UPLOAD_FORM = """<!DOCTYPE html>
   });
 
   const filesData = [];
+
+  // Dynamic version — kept in sync with the badge in the HTML
+  const APP_VERSION = '1.0.1';
+  const badge = document.getElementById('version-badge');
+  if (badge) badge.textContent = `v${APP_VERSION} – loading…`;
 
   function previewFiles() {
     fileList.innerHTML = '';
@@ -313,12 +319,9 @@ UPLOAD_FORM = """<!DOCTYPE html>
   function showResults(data, jobId) {
     const rl = document.getElementById('result-links');
     const jl = document.getElementById('journal-link');
-    // Show jobId reference in results
-    if (jobId) {
-      const jobLine = document.createElement('div');
-      jobLine.style.cssText = 'font-size:0.75rem;color:#6366f1;margin-bottom:0.5rem;';
-      jobLine.textContent = `Job ${jobId}`;
-    }
+    // Refresh version badge to confirm fresh page state
+    if (badge) badge.textContent = `v${APP_VERSION} ✓`;
+
     if (data.result) {
       jl.href = data.result.journal_url || '#';
       jl.textContent = data.result.journal_file || 'Open journal entry';
