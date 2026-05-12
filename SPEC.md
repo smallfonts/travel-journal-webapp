@@ -28,13 +28,14 @@
 - [x] Verify: upload a test file and check response + poll cycle
 
 ## Stage 4 — Media Processing Pipeline
-- [ ] File cache step — copy uploaded files to Hermes image/video cache
-- [ ] EXIF extraction (`extract_photo_metadata()` from travel-journal skill)
-- [ ] GPS → country routing (Nominatim reverse geocode → `Travel/<Country>/`)
-- [ ] No-GPS fallback: flag for manual country confirmation
-- [ ] HEIC → JPEG conversion (pillow_heif for non-Telegram files)
-- [ ] Orientation fix (save with `exif[0x0112] = 1`)
-- [ ] Verify: process a test JPEG and HEIC file end-to-end
+- [x] File cache step — copy uploaded files to Hermes image/video cache
+- [x] EXIF extraction (`extract_photo_metadata()` from travel-journal skill)
+- [x] GPS → country routing (Nominatim reverse geocode → `Travel/<Country>/`)
+- [x] No-GPS fallback: flag for manual country confirmation
+- [x] HEIC → JPEG conversion (pillow_heif for non-Telegram files)
+- [x] Orientation fix (save with `exif[0x0112] = 1`)
+- [x] Verify: process a test JPEG and HEIC file end-to-end (60 tests passing)
+- [x] Pushed at `9683894`
 
 ## Stage 5 — Journal Entry Integration
 - [ ] Read daily template from vault (`Travel/Travel Journal Entry Daily Template (YYYY-MM-DD).md`)
