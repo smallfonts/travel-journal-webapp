@@ -72,6 +72,19 @@
 - [ ] Test web form accessible through gateway
 - [ ] API accessible via `curl` from internal network
 
+## Stage 9 — Bug Fixes + Polish
+- [x] **Version badge** — `v1.0.1` pill in header; `APP_VERSION` is single source of truth in JS; badge updates to `✓` on results page to confirm fresh state
+- [x] **Duplicate journal entries** — pipeline loop now deduplicates by original filename (set tracking); skips and marks duplicate files as "Duplicate — already processed in this job"
+- [x] **Poll failed: Can't find variable: jobId** — `showResults(data, jobId)` now receives `jobId` as second argument; version badge refresh confirms page is not stale
+- [x] Verify: 96 tests passing, pushed at `1e8e393`
+
+### Known Issues (Stage 9)
+- [ ] **MochiMon section position** — move from bottom to after ☁️Mochi's Dreamscape (in progress)
+- [ ] **Leaflet map marker** — verify update fires when new GPS photo is added to existing journal
+- [ ] **Caption enrichment** — verify MiniMax vision enrichment works with real photos
+- [ ] **MochiMon summary** — verify AI-generated daily summary writes correctly at end of job
+- [ ] **End-to-end test** — upload a real photo and verify full pipeline end-to-end
+
 ---
 
 *Last updated: 2026-05-12*
