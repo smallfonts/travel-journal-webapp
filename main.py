@@ -11,6 +11,11 @@ from app.pipeline import (
     extract_metadata, fix_orientation_and_save, gps_to_country,
     format_coordinates, parse_exif_datetime,
 )
+from app.journal import (
+    get_journal_path, get_media_dir, read_journal,
+    insert_media_into_journal, insert_ai_image_into_dreamscape,
+    update_mochimon_summary, create_journal_entry,
+)
 
 app = FastAPI(title="Travel Journal Web App")
 
@@ -409,9 +414,9 @@ async def api_upload(
 
     update_job_status(job_id, "processing")
 
-    # ─── Stage 4 Pipeline (runs async in background) ───────────────────────
+    # ─── Stage 4+5 Pipeline (runs async in background) ───────────────────────
     async def run_pipeline():
-        journal_entries = []  # (date, country, cache_path, meta, vault_dest) per file
+        journal_entries = []  # {date, country, vault_path, meta, filename, time_str}
 
         for fi in files_info:
             update_file_status(job_id, fi["filename"], "processing", "Extracting metadata...")
@@ -431,14 +436,17 @@ async def api_upload(
 
             # Determine date
             date_str = None
+            time_str = None
             if meta["datetime"]:
                 dt = datetime.strptime(meta["datetime"], "%Y-%m-%d %H:%M:%S")
                 date_str = dt.strftime("%Y-%m-%d")
+                time_str = dt.strftime("%H:%M")
             elif date_override:
                 date_str = date_override
+                time_str = datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M")
             else:
-                # Use current date
                 date_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+                time_str = datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M")
 
             # Determine country
             country = meta["country"]
@@ -451,16 +459,12 @@ async def api_upload(
                         f"Country unknown — please confirm. Date: {date_str}")
                 continue
 
-            # Build destination path in vault
-            # e.g. Travel/Singapore/media/2026-05-12-1430-eventname.jpg
             safe_country = country.replace(" ", "-")
-            country_dir = os.path.join(settings.VAULT_PATH, "Travel", safe_country)
-            media_dir = os.path.join(country_dir, "media")
+            media_dir = get_media_dir(settings.VAULT_PATH, safe_country)
             os.makedirs(media_dir, exist_ok=True)
 
             is_video = meta["media_type"] == "video"
-            ext = "mp4" if is_video else "jpg"
-            time_suffix = datetime.now(timezone(timedelta(hours=8))).strftime("%H%M")
+            time_suffix = time_str.replace(":", "")
             out_name = f"{date_str}-{time_suffix}-{fi['filename']}"
             out_name = "".join(c if c.isalnum() or c in (".", "-", "_") else "_" for c in out_name)
             vault_dest = os.path.join(media_dir, out_name)
@@ -469,32 +473,70 @@ async def api_upload(
             if is_video:
                 shutil.copy2(fi["cache_path"], vault_dest)
             else:
-                # Fix orientation and save
                 result = fix_orientation_and_save(fi["cache_path"], vault_dest)
                 if result["was_rotated"]:
                     update_file_status(job_id, fi["filename"], "processing",
                         f"Photo rotated to correct orientation, saved to {safe_country}/media/")
 
+            update_file_status(job_id, fi["filename"], "processing", "Updating journal entry...")
+
+            # ─── Stage 5: Journal Integration ──────────────────────────────
+            journal_path = get_journal_path(settings.VAULT_PATH, safe_country, date_str)
+
+            # Create journal if doesn't exist
+            if not os.path.exists(journal_path):
+                lat = meta.get("lat") or 0.0
+                lon = meta.get("lon") or 0.0
+                create_journal_entry(settings.VAULT_PATH, safe_country, date_str,
+                                     lat=lat, lon=lon, day_num=1)
+                update_file_status(job_id, fi["filename"], "processing",
+                    f"Created new journal: Travel/{safe_country}/{date_str} {safe_country}.md")
+
+            # Determine caption
+            entry_caption = caption if caption else (meta.get("location_string") or "Travel moment")
+
+            # Insert into journal timeline
+            insert_media_into_journal(
+                journal_path=journal_path,
+                time_str=time_str,
+                caption=entry_caption,
+                vault_media_path=vault_dest,
+                is_video=is_video,
+            )
+
             update_file_status(job_id, fi["filename"], "done",
-                f"✅ Saved to Travel/{safe_country}/media/ — {meta.get('message', '')}")
+                f"✅ Saved to Travel/{safe_country}/media/ + journal entry updated")
 
             journal_entries.append({
-                "date":         date_str,
-                "country":      safe_country,
-                "vault_path":   vault_dest,
-                "meta":         meta,
-                "filename":     fi["filename"],
+                "date":       date_str,
+                "country":    safe_country,
+                "vault_path": vault_dest,
+                "meta":       meta,
+                "filename":   fi["filename"],
+                "time_str":   time_str,
             })
 
         # Build result summary
-        countries = set(e["country"] for e in journal_entries)
-        journal_file = f"{list(countries)[0]}/{date_str} {list(countries)[0]}.md" if countries else None
-        update_job_status(job_id, "done", json.dumps({
-            "journal_file":   journal_file,
-            "journal_url":    f"#",
-            "entries_count":  len(journal_entries),
-            "countries":      list(countries),
-        }))
+        if journal_entries:
+            countries = list(set(e["country"] for e in journal_entries))
+            primary = countries[0]
+            date_str = journal_entries[0]["date"]
+            journal_file = f"{primary}/{date_str} {primary}.md"
+            journal_url = f"obsidian://open?vault=WeeksObsidianVault&file=Travel/{journal_file}"
+            update_job_status(job_id, "done", json.dumps({
+                "journal_file":   journal_file,
+                "journal_url":    journal_url,
+                "entries_count":  len(journal_entries),
+                "countries":      countries,
+            }))
+        else:
+            update_job_status(job_id, "done", json.dumps({
+                "journal_file":   None,
+                "journal_url":    None,
+                "entries_count":  0,
+                "countries":      [],
+                "message":        "No entries — GPS was missing for all files",
+            }))
 
     background_tasks.add_task(run_pipeline)
 
