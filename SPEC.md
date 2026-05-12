@@ -19,10 +19,13 @@
 - [x] Mobile-responsive, minimal clean styling
 
 ## Stage 3 — Internal REST API
-- [ ] `POST /api/journal/upload` — multipart endpoint (no auth — accessible via Tailscale only)
-- [ ] `GET /api/journal/status/{job_id}` — polling endpoint
-- [ ] `GET /health` — liveness check
-- [ ] Verify: upload a test file and check response
+- [x] `POST /api/journal/upload` — multipart endpoint (no auth — accessible via Tailscale only)
+- [x] `GET /api/journal/status/{job_id}` — polling endpoint (returns job state + per-file breakdown)
+- [x] `GET /health` — liveness check
+- [x] SQLite job store (`jobs.db`) with `jobs` + `job_files` tables
+- [x] Background task stub (`complete_stub`) — Stage 4 wires in real pipeline
+- [x] Frontend JS polls `/api/journal/status/{job_id}` every 2s and renders progress
+- [x] Verify: upload a test file and check response + poll cycle
 
 ## Stage 4 — Media Processing Pipeline
 - [ ] File cache step — copy uploaded files to Hermes image/video cache
