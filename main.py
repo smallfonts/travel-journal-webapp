@@ -296,6 +296,6 @@ async def job_status(job_id: str):
 @app.on_event("startup")
 def on_startup():
     print(f"Travel Journal Web App starting...")
+    print(f"  Local:  http://127.0.0.1:8001")
+    print(f"  Tailscale: http://100.85.28.35:8001")
     print(f"  Vault: {settings.VAULT_PATH}")
-    print(f"  Image cache: {settings.CACHE_IMAGES}")
-    print(f"  Video cache: {settings.CACHE_VIDEOS}")
