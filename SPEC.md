@@ -9,12 +9,12 @@
 - [x] Verify: `python3 -m uvicorn main:app --port 8001` starts without errors (port 8000 occupied by node/SillyTavern)
 
 ## Stage 2 — Web Form UI
-- [ ] `GET /` — Jinja2 template with upload form
-- [ ] Drag-and-drop multi-file upload zone
-- [ ] Caption textarea, date override input, process_now checkbox
-- [ ] File preview (thumbnails + filenames) after selection
-- [ ] Submit button → `POST /upload`
-- [ ] Mobile-responsive, minimal clean styling
+- [x] `GET /` — Jinja2 template with upload form (inline HTML — Jinja2Templates causes dict hashing error in hermes-agent venv, using HTMLResponse with template string instead)
+- [x] Drag-and-drop multi-file upload zone
+- [x] Caption textarea, date override input, process_now checkbox
+- [x] File preview (thumbnails + filenames) after selection
+- [x] Submit button → `POST /upload`
+- [x] Mobile-responsive, minimal clean styling
 
 ## Stage 3 — Internal REST API
 - [ ] `POST /api/journal/upload` — multipart endpoint (no auth — accessible via Tailscale only)
