@@ -16,6 +16,7 @@ from app.journal import (
     insert_media_into_journal, insert_ai_image_into_dreamscape,
     update_mochimon_summary, create_journal_entry,
 )
+from app.dreamscape import generate_dreamscape_image
 
 app = FastAPI(title="Travel Journal Web App")
 
@@ -506,6 +507,27 @@ async def api_upload(
 
             update_file_status(job_id, fi["filename"], "done",
                 f"✅ Saved to Travel/{safe_country}/media/ + journal entry updated")
+
+            # ─── Stage 6: AI DreamScape generation ────────────────────────
+            update_file_status(job_id, fi["filename"], "processing", "Generating AI Dreamscape image...")
+            ai_result = generate_dreamscape_image(
+                caption=entry_caption,
+                location_string=meta.get("location_string") or "",
+                datetime_str=meta.get("datetime") or "",
+                media_type=meta["media_type"],
+                vault_path=settings.VAULT_PATH,
+                country=safe_country,
+                date_str=date_str,
+                time_str=time_str.replace(":", ""),
+            )
+            if ai_result["ok"]:
+                ai_filename = os.path.basename(ai_result["vault_dest"])
+                insert_ai_image_into_dreamscape(journal_path, ai_filename)
+                update_file_status(job_id, fi["filename"], "processing",
+                    f"🎨 DreamScape image generated for {time_str}")
+            else:
+                update_file_status(job_id, fi["filename"], "processing",
+                    f"⚠️ AI image generation skipped: {ai_result.get('error', 'unknown error')}")
 
             journal_entries.append({
                 "date":       date_str,
