@@ -1,12 +1,12 @@
 # Travel Journal Web App — Task List
 
 ## Stage 1 — Project Scaffold
-- [ ] Create project folder `Projects/TravelJournalWebApp/`
-- [ ] Create `SPEC.md` (this file, kept in sync as we go)
-- [ ] Set up FastAPI app skeleton (`main.py`, `app/` package)
-- [ ] Add `requirements.txt` (fastapi, uvicorn, python-multipart, jinja2, pillow, pillow-heif)
-- [ ] Create env var config (`.env` template + `settings.py`)
-- [ ] Verify: `python3 -m uvicorn app.main:app --port 8000` starts without errors
+- [x] Create project folder `Projects/TravelJournalWebApp/`
+- [x] Create `SPEC.md` (this file, kept in sync as we go)
+- [x] Set up FastAPI app skeleton (`main.py`, `app/` package)
+- [x] Add `requirements.txt` (fastapi, uvicorn, python-multipart, jinja2, pillow, pillow-heif)
+- [x] Create env var config (`.env` template + `settings.py`)
+- [x] Verify: `python3 -m uvicorn main:app --port 8001` starts without errors (port 8000 occupied by node/SillyTavern)
 
 ## Stage 2 — Web Form UI
 - [ ] `GET /` — Jinja2 template with upload form
