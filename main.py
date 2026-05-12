@@ -1,11 +1,16 @@
 """Travel Journal Web App — FastAPI entry point."""
-import uuid, json, os, asyncio, sqlite3
+import uuid, json, os, asyncio, sqlite3, shutil
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, UploadFile, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from typing import Optional
 
 from app.config import settings
+from app.pipeline import (
+    extract_metadata, fix_orientation_and_save, gps_to_country,
+    format_coordinates, parse_exif_datetime,
+)
 
 app = FastAPI(title="Travel Journal Web App")
 
@@ -404,18 +409,94 @@ async def api_upload(
 
     update_job_status(job_id, "processing")
 
-    # TODO Stage 4: call actual pipeline here (background_tasks.add_task...)
-    # For now: just mark all files done after a short delay
-    async def complete_stub():
-        await asyncio.sleep(1)
+    # ─── Stage 4 Pipeline (runs async in background) ───────────────────────
+    async def run_pipeline():
+        journal_entries = []  # (date, country, cache_path, meta, vault_dest) per file
+
         for fi in files_info:
-            update_file_status(job_id, fi["filename"], "done", "Pipeline not yet wired (Stage 3 stub)")
+            update_file_status(job_id, fi["filename"], "processing", "Extracting metadata...")
+
+            meta = extract_metadata(fi["cache_path"])
+
+            # Update file status with metadata findings
+            meta_summary = meta["message"]
+            if meta["country"]:
+                meta_summary += f" | {meta['country']}"
+            if meta["location_string"]:
+                meta_summary += f" | {meta['location_string']}"
+            if meta["datetime"]:
+                meta_summary += f" | {meta['datetime']}"
+
+            update_file_status(job_id, fi["filename"], "processing", meta_summary)
+
+            # Determine date
+            date_str = None
+            if meta["datetime"]:
+                dt = datetime.strptime(meta["datetime"], "%Y-%m-%d %H:%M:%S")
+                date_str = dt.strftime("%Y-%m-%d")
+            elif date_override:
+                date_str = date_override
+            else:
+                # Use current date
+                date_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+
+            # Determine country
+            country = meta["country"]
+            if not country:
+                if meta["no_gps"]:
+                    update_file_status(job_id, fi["filename"], "done",
+                        f"No GPS — manual location confirmation needed. Date: {date_str}")
+                else:
+                    update_file_status(job_id, fi["filename"], "done",
+                        f"Country unknown — please confirm. Date: {date_str}")
+                continue
+
+            # Build destination path in vault
+            # e.g. Travel/Singapore/media/2026-05-12-1430-eventname.jpg
+            safe_country = country.replace(" ", "-")
+            country_dir = os.path.join(settings.VAULT_PATH, "Travel", safe_country)
+            media_dir = os.path.join(country_dir, "media")
+            os.makedirs(media_dir, exist_ok=True)
+
+            is_video = meta["media_type"] == "video"
+            ext = "mp4" if is_video else "jpg"
+            time_suffix = datetime.now(timezone(timedelta(hours=8))).strftime("%H%M")
+            out_name = f"{date_str}-{time_suffix}-{fi['filename']}"
+            out_name = "".join(c if c.isalnum() or c in (".", "-", "_") else "_" for c in out_name)
+            vault_dest = os.path.join(media_dir, out_name)
+
+            # Process image (fix orientation) or copy video
+            if is_video:
+                shutil.copy2(fi["cache_path"], vault_dest)
+            else:
+                # Fix orientation and save
+                result = fix_orientation_and_save(fi["cache_path"], vault_dest)
+                if result["was_rotated"]:
+                    update_file_status(job_id, fi["filename"], "processing",
+                        f"Photo rotated to correct orientation, saved to {safe_country}/media/")
+
+            update_file_status(job_id, fi["filename"], "done",
+                f"✅ Saved to Travel/{safe_country}/media/ — {meta.get('message', '')}")
+
+            journal_entries.append({
+                "date":         date_str,
+                "country":      safe_country,
+                "vault_path":   vault_dest,
+                "meta":         meta,
+                "filename":     fi["filename"],
+            })
+
+        # Build result summary
+        countries = set(e["country"] for e in journal_entries)
+        journal_file = f"{list(countries)[0]}/{date_str} {list(countries)[0]}.md" if countries else None
         update_job_status(job_id, "done", json.dumps({
-            "journal_file": "Stage 4 — wire up pipeline",
-            "journal_url": "#",
+            "journal_file":   journal_file,
+            "journal_url":    f"#",
+            "entries_count":  len(journal_entries),
+            "countries":      list(countries),
         }))
 
-    background_tasks.add_task(complete_stub)
+    background_tasks.add_task(run_pipeline)
 
     return {"status": "accepted", "job_id": job_id, "message": f"Job created — {len(files)} file(s)"}
 
