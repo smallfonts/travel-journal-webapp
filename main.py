@@ -313,8 +313,21 @@ UPLOAD_FORM = """<!DOCTYPE html>
       jl.href = data.result.journal_url || '#';
       jl.textContent = data.result.journal_file || 'Open journal entry';
       const dsi = document.getElementById('dream-scape-img');
-      if (data.result.dream_scape_url) { dsi.src = data.result.dream_scape_url; dsi.style.display = 'block'; }
-      else { dsi.style.display = 'none'; }
+      // Use /api/media/ endpoint for web display (obsidian:// won't work in browser)
+      if (data.result.dream_scape_path) {
+        // Extract country + filename from vault path for /api/media/{country}/{filename}
+        // e.g. /home/cube/Dropbox/.../Travel/Singapore/media/2026-05-12-0930-dreamscape.jpg
+        // → /api/media/Singapore/2026-05-12-0930-dreamscape.jpg
+        const parts = data.result.dream_scape_path.split('/');
+        const mediaIdx = parts.indexOf('media');
+        const country = parts[mediaIdx - 1];
+        const filename = parts[mediaIdx + 1];
+        dsi.src = `/api/media/${encodeURIComponent(country)}/${encodeURIComponent(filename)}`;
+        dsi.style.display = 'block';
+        dsi.onerror = () => { dsi.style.display = 'none'; };
+      } else {
+        dsi.style.display = 'none';
+      }
     }
     rl.style.display = 'block';
   }
@@ -520,9 +533,13 @@ async def api_upload(
                 date_str=date_str,
                 time_str=time_str.replace(":", ""),
             )
+            ai_dream_scape_path = None
+            ai_dream_scape_url = None
             if ai_result["ok"]:
                 ai_filename = os.path.basename(ai_result["vault_dest"])
                 insert_ai_image_into_dreamscape(journal_path, ai_filename)
+                ai_dream_scape_path = ai_result["vault_dest"]
+                ai_dream_scape_url = f"obsidian://open?vault=WeeksObsidianVault&file=Travel/{safe_country}/media/{ai_filename}"
                 update_file_status(job_id, fi["filename"], "processing",
                     f"🎨 DreamScape image generated for {time_str}")
             else:
@@ -536,6 +553,8 @@ async def api_upload(
                 "meta":       meta,
                 "filename":   fi["filename"],
                 "time_str":   time_str,
+                "dream_scape_path": ai_dream_scape_path,
+                "dream_scape_url":  ai_dream_scape_url,
             })
 
         # Build result summary
@@ -545,11 +564,16 @@ async def api_upload(
             date_str = journal_entries[0]["date"]
             journal_file = f"{primary}/{date_str} {primary}.md"
             journal_url = f"obsidian://open?vault=WeeksObsidianVault&file=Travel/{journal_file}"
+            # Pick first DreamScape image as preview
+            ds_path = next((e["dream_scape_path"] for e in journal_entries if e["dream_scape_path"]), None)
+            ds_url = next((e["dream_scape_url"] for e in journal_entries if e["dream_scape_url"]), None)
             update_job_status(job_id, "done", json.dumps({
-                "journal_file":   journal_file,
-                "journal_url":    journal_url,
-                "entries_count":  len(journal_entries),
-                "countries":      countries,
+                "journal_file":     journal_file,
+                "journal_url":      journal_url,
+                "dream_scape_url":  ds_url,
+                "dream_scape_path": ds_path,
+                "entries_count":    len(journal_entries),
+                "countries":        countries,
             }))
         else:
             update_job_status(job_id, "done", json.dumps({
@@ -590,6 +614,18 @@ async def job_status(job_id: str):
         ],
         "result": result,
     }
+
+
+@app.get("/api/media/{country}/{filename}")
+async def serve_media(country: str, filename: str):
+    """Serve a vault media file (e.g. DreamScape images) for display in the web UI."""
+    safe_country = country.replace(" ", "-")
+    vault_media = os.path.join(settings.VAULT_PATH, "Travel", safe_country, "media", filename)
+    if not os.path.exists(vault_media):
+        return {"status": "error", "message": "File not found"}
+    from fastapi import File
+    from fastapi.responses import FileResponse
+    return FileResponse(vault_media, media_type="image/jpeg")
 
 # Keep the old /upload for backward compat (Stage 2-style form)
 @app.post("/upload")
