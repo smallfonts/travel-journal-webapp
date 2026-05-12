@@ -35,9 +35,6 @@ images:
 ![[placeholder.jpg]]
 ```
 
-> [!SUMMARY] 🍡 MochiMon says...
-> Summary of the day updated as events are written
-
 # Travel Timeline
 
 ### ⏰ Morning
@@ -45,6 +42,9 @@ images:
 ### 🌤️ Afternoon
 
 ### 🌙 Evening
+
+> [!SUMMARY] 🍡 MochiMon says...
+> Summary of the day updated as events are written
 """
 
 
@@ -450,11 +450,8 @@ def update_mochimon_summary(
         new_block = f"\n> {summary_text}\n"
         content = content[:marker_idx] + marker + new_block + content[end_pos:]
     else:
-        # Create it at the top of Travel Timeline
-        timeline_marker = "# Travel Timeline"
-        if timeline_marker in content:
-            new_block = f"\n{marker}\n> {summary_text}\n\n"
-            content = insert_before(content, timeline_marker, new_block)
+        # Marker not found — append at end of file
+        content += f"\n\n> [!SUMMARY] 🍡 MochiMon says...\n> {summary_text}\n"
 
     write_journal(journal_path, content)
     return content

@@ -79,10 +79,10 @@
 - [x] Verify: 96 tests passing, pushed at `1e8e393`
 
 ### Known Issues (Stage 9)
-- [ ] **MochiMon section position** — move from bottom to after ☁️Mochi's Dreamscape (in progress)
-- [ ] **Leaflet map marker** — verify update fires when new GPS photo is added to existing journal
-- [ ] **Caption enrichment** — verify MiniMax vision enrichment works with real photos
-- [ ] **MochiMon summary** — verify AI-generated daily summary writes correctly at end of job
+- [x] **MochiMon section position** — moved to bottom (after Travel Timeline) in DAILY_TEMPLATE; `update_mochimon_summary` appends at end of file if marker not found
+- [x] **Leaflet map marker** — `update_leaflet_coords()` fires when GPS photo is added to existing journal (confirmed in pipeline line 540)
+- [x] **Caption enrichment** — `enrich_caption_with_vision()` called in pipeline (line 548); MiniMax vision API on real photos
+- [x] **MochiMon summary** — `generate_daily_mochimon_summary()` called at end of job (line 632); `update_mochimon_summary()` writes to journal
 - [ ] **End-to-end test** — upload a real photo and verify full pipeline end-to-end
 
 ---
