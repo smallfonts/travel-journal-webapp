@@ -451,6 +451,9 @@ async def api_upload(
 
     update_job_status(job_id, "processing")
 
+    # Capture process_now for use inside async run_pipeline closure
+    process_now_flag = process_now
+
     # ─── Enhanced Stage 4+5 Pipeline (runs async in background) ─────────────────
     async def run_pipeline():
         all_entries = []  # {date, country, journal_path, meta, time_str, enriched_caption, vault_path}
@@ -565,30 +568,34 @@ async def api_upload(
                 is_video=is_video,
             )
 
-            # ─── Stage 6: AI DreamScape generation ────────────────────────
-            update_file_status(job_id, fi["filename"], "processing", "Generating AI Dreamscape image...")
-            ai_result = generate_dreamscape_image(
-                caption=enriched_caption,
-                location_string=meta.get("location_string") or "",
-                datetime_str=meta.get("datetime") or "",
-                media_type=meta["media_type"],
-                vault_path=settings.VAULT_PATH,
-                country=safe_country,
-                date_str=date_str,
-                time_str=time_suffix,
-            )
+            # ─── Stage 6: AI DreamScape generation (only if checkbox was set) ─────
             ai_dream_scape_path = None
             ai_dream_scape_url = None
-            if ai_result["ok"]:
-                ai_filename = os.path.basename(ai_result["vault_dest"])
-                insert_ai_image_into_dreamscape(journal_path, ai_filename)
-                ai_dream_scape_path = ai_result["vault_dest"]
-                ai_dream_scape_url = f"obsidian://open?vault=WeeksObsidianVault&file=Travel/{safe_country}/media/{ai_filename}"
-                update_file_status(job_id, fi["filename"], "done",
-                    f"🎨 DreamScape + journal entry updated")
+            if process_now_flag:
+                update_file_status(job_id, fi["filename"], "processing", "Generating AI Dreamscape image...")
+                ai_result = generate_dreamscape_image(
+                    caption=enriched_caption,
+                    location_string=meta.get("location_string") or "",
+                    datetime_str=meta.get("datetime") or "",
+                    media_type=meta["media_type"],
+                    vault_path=settings.VAULT_PATH,
+                    country=safe_country,
+                    date_str=date_str,
+                    time_str=time_suffix,
+                )
+                if ai_result["ok"]:
+                    ai_filename = os.path.basename(ai_result["vault_dest"])
+                    insert_ai_image_into_dreamscape(journal_path, ai_filename)
+                    ai_dream_scape_path = ai_result["vault_dest"]
+                    ai_dream_scape_url = f"obsidian://open?vault=WeeksObsidianVault&file=Travel/{safe_country}/media/{ai_filename}"
+                    update_file_status(job_id, fi["filename"], "done",
+                        f"🎨 DreamScape + journal entry updated")
+                else:
+                    update_file_status(job_id, fi["filename"], "done",
+                        f"✅ Journal entry updated (AI DreamScape skipped)")
             else:
                 update_file_status(job_id, fi["filename"], "done",
-                    f"✅ Journal entry updated (AI DreamScape skipped)")
+                    f"✅ Journal entry updated")
 
             all_entries.append({
                 "date":             date_str,
