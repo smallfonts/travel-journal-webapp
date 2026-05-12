@@ -1,0 +1,14 @@
+INFO:     Started server process [3270050]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+Travel Journal Web App starting...
+  Vault: /home/cube/Dropbox/Apps/remotely-save/WeeksObsidianVault
+  Image cache: /home/cube/.hermes/profiles/journal/cache/images
+  Video cache: /home/cube/.hermes/profiles/journal/cache/videos
+INFO:     127.0.0.1:47686 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47692 - "POST /upload HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [3270050]
