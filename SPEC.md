@@ -83,7 +83,7 @@
 - [x] **Leaflet map marker** — `update_leaflet_coords()` fires when GPS photo is added to existing journal (confirmed in pipeline line 540)
 - [x] **Caption enrichment** — `enrich_caption_with_vision()` called in pipeline (line 548); MiniMax vision API on real photos
 - [x] **MochiMon summary** — `generate_daily_mochimon_summary()` called at end of job (line 632); `update_mochimon_summary()` writes to journal
-- [ ] **End-to-end test** — upload a real photo and verify full pipeline end-to-end
+- [x] **End-to-end test** — 3 uploads tested (GPS photo → vault → journal entry); journal correctly updated with caption, media block, MochiMon summary; AI DreamScape gracefully skipped when MiniMax quota exceeded; robust null-handling in dreamscape.py confirmed
 
 ---
 
