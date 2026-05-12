@@ -58,12 +58,22 @@ init_jobs_db()
 
 def create_job(files_info: list, caption: str, date_override: Optional[str], process_now: bool) -> str:
     job_id = str(uuid.uuid4())[:8]
+
+    # Deduplicate by filename before inserting — same-named files in a single
+    # upload are only stored once in job_files (pipeline loop skips extras)
+    seen = set()
+    unique_files = []
+    for fi in files_info:
+        if fi["filename"] not in seen:
+            seen.add(fi["filename"])
+            unique_files.append(fi)
+
     with sqlite3.connect(JOBS_DB) as db:
         db.execute(
             "INSERT INTO jobs (job_id, caption, date_override, process_now, files_json) VALUES (?, ?, ?, ?, ?)",
             (job_id, caption, date_override, int(process_now), json.dumps([]))
         )
-        for fi in files_info:
+        for fi in unique_files:
             db.execute(
                 "INSERT INTO job_files (job_id, filename, size, ctype, cache_path) VALUES (?, ?, ?, ?, ?)",
                 (job_id, fi["filename"], fi["size"], fi["ctype"], fi["cache_path"])
