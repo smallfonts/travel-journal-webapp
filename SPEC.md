@@ -60,7 +60,12 @@
 - [x] DreamScape image preview — `showResults()` uses `/api/media/{country}/{filename}` to display DreamScape JPEG in browser (obsidian:// doesn't work in browser)
 - [x] `/api/media/{country}/{filename}` endpoint — serves vault media files for browser display
 - [x] "Upload more" button — `resetForm()` clears form, status panel, result links
-- [x] Verify: 96 tests passing, pushed at `6533ad8`
+- [x] **Bug fix: `jobId` JS error** — `renderStatus()` and `showResults()` both now receive `jobId`; `showResults()` reads `data.result.mochimon_summary`
+- [x] **Leaflet map marker update** — `update_leaflet_coords()` replaces `coordinate: [lat, lon]` when a photo with GPS is added to an existing journal
+- [x] **Caption enrichment via MiniMax vision** — `enrich_caption_with_vision()` in `app/enrich.py` sends photo + user caption to MiniMax vision model and returns enriched prose (scene details, food names, mood). Falls back to original caption on API failure
+- [x] **MochiMon daily summary** — `generate_daily_mochimon_summary()` calls MiniMax LLM to generate a warm prose summary from all enriched captions; `update_mochimon_summary()` writes it to all journal files at end of job
+- [x] **Dreamscape insertion order** — `insert_ai_image_into_dreamscape()` now appends to last `cards-album` in Dreamscape section (not before MochiMon summary), ensuring proper ordering: Dreamscape images → MochiMon summary → Travel Timeline
+- [x] Verify: 96 tests passing, pushed at `93824c1`
 
 ## Stage 8 — Integration with Hermes Gateway
 - [ ] Expose via gateway reverse proxy rule (`/travel-journal/` → `http://localhost:8000/`)
