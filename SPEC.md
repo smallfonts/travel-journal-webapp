@@ -10,6 +10,8 @@
 
 ## Stage 2 — Web Form UI
 - [x] `GET /` — Jinja2 template with upload form (inline HTML — Jinja2Templates causes dict hashing error in hermes-agent venv, using HTMLResponse with template string instead)
+- [x] Server bound to `0.0.0.0:8001` — accessible via Tailscale at `http://100.85.28.35:8001`
+- [x] Systemd user service (`travel-journal-webapp`) installed and enabled
 - [x] Drag-and-drop multi-file upload zone
 - [x] Caption textarea, date override input, process_now checkbox
 - [x] File preview (thumbnails + filenames) after selection
