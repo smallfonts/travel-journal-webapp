@@ -15,7 +15,7 @@ MINIMAX_BASE = "https://api.minimax.chat/v1"
 def _load_api_key() -> str:
     global MINIMAX_API_KEY
     if MINIMAX_API_KEY is None:
-        env_path = os.path.expanduser("~/.hermes/.env")
+        env_path = "/home/cube/.hermes/.env"
         if os.path.exists(env_path):
             with open(env_path) as f:
                 for line in f:

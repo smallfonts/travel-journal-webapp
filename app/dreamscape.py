@@ -127,11 +127,15 @@ def generate_image(
 
     try:
         data = resp.json()
-        images = data.get("data", {}).get("image_base64", [])
-        if not images:
-            return {"ok": False, "path": None, "error": f"No image returned: {data}", "prompt": prompt}
-    except json.JSONDecodeError:
+    except Exception:
         return {"ok": False, "path": None, "error": f"Invalid JSON response: {resp.text[:200]}", "prompt": prompt}
+    if not isinstance(data, dict):
+        return {"ok": False, "path": None, "error": f"Expected JSON object, got {type(data)}: {resp.text[:200]}", "prompt": prompt}
+    images = data.get("data", {}) or {}
+    if isinstance(images, dict):
+        images = images.get("image_base64", []) or []
+    if not images:
+        return {"ok": False, "path": None, "error": f"No image returned: {data}", "prompt": prompt}
 
     # Save first image
     try:
