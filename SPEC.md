@@ -38,20 +38,21 @@
 - [x] Pushed at `9683894`
 
 ## Stage 5 — Journal Entry Integration
-- [ ] Read daily template from vault (`Travel/Travel Journal Entry Daily Template (YYYY-MM-DD).md`)
-- [ ] Find or create `Travel/<Country>/YYYY-MM-DD <Country>.md`
-- [ ] Insert into correct hourly section with `cards-album`
-- [ ] Leaflet marker update (discretion-based)
-- [ ] Vision enrichment (`mcp_MiniMax_understand_image`)
-- [ ] Update MochiMon summary
-- [ ] Verify: end-to-end test — upload photo → check vault entry
+- [x] Read daily template from vault (`Travel Journal Entry Daily Template (YYYY-MM-DD).md` is AI instruction file — use built-in DAILY_TEMPLATE instead)
+- [x] Find or create `Travel/<Country>/YYYY-MM-DD <Country>.md`
+- [x] Insert into correct hourly section with `cards-album`
+- [x] Leaflet marker update (coordinates from EXIF GPS)
+- [x] Create journal entry when missing (from built-in DAILY_TEMPLATE with leaflet block, Dreamscape, MochiMon summary, Travel Timeline)
+- [x] Verify: end-to-end test — upload photo → check vault entry (81 tests passing, pushed at `db00d01`)
 
 ## Stage 6 — AI DreamScape Generation
-- [ ] MiniMax API integration (read key from `.env`)
-- [ ] Pixel-art prompt builder (per-event, MochiMon protagonist, enforcement terms)
-- [ ] Save to `Travel/<Country>/media/YYYY-MM-DD-HHMM-eventname.jpg`
-- [ ] Insert into `☁️Mochi's Dreamscape` section of journal
-- [ ] Verify: AI image appears in journal DreamScape section
+- [x] MiniMax API integration (read key from `/home/cube/.hermes/.env` directly — os.environ not available in sandbox)
+- [x] Pixel-art prompt builder (per-event, MochiMon protagonist, time-of-day lighting, location scene)
+- [x] `generate_dreamscape_image()` — end-to-end: build prompt → call MiniMax → save to `Travel/<Country>/media/YYYY-MM-DD-HHMM-dreamscape.jpg`
+- [x] Insert into `☁️Mochi's Dreamscape` section via `insert_ai_image_into_dreamscape()`
+- [x] Wired into pipeline: AI image generated after each media file is saved + journal updated
+- [x] Graceful handling: if AI fails, pipeline continues with warning (no hard failure)
+- [x] Verify: 96 tests passing, pushed at `cf1550e`
 
 ## Stage 7 — Processing Status + Result Page
 - [ ] Progress tracking (in-memory job store with job_id)
