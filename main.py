@@ -15,7 +15,9 @@ from app.journal import (
     get_journal_path, get_media_dir, read_journal,
     insert_media_into_journal, insert_ai_image_into_dreamscape,
     update_mochimon_summary, create_journal_entry,
+    update_leaflet_coords,
 )
+from app.enrich import enrich_caption_with_vision, generate_daily_mochimon_summary
 from app.dreamscape import generate_dreamscape_image
 
 app = FastAPI(title="Travel Journal Web App")
@@ -278,7 +280,7 @@ UPLOAD_FORM = """<!DOCTYPE html>
       try {
         const r = await fetch(`/api/journal/status/${jobId}`);
         const data = await r.json();
-        renderStatus(data);
+        renderStatus(data, jobId);
         if (data.status === 'done' || data.status === 'error') {
           clearInterval(interval);
           submitBtn.disabled = false;
@@ -294,7 +296,7 @@ UPLOAD_FORM = """<!DOCTYPE html>
     }, 2000);
   }
 
-  function renderStatus(data) {
+  function renderStatus(data, jobId) {
     const statusMap = { pending: '⏳', processing: '🔄', done: '✅', error: '❌' };
     const labelMap = { pending: 'Pending', processing: 'Processing…', done: 'Done', error: 'Error' };
     let html = `<div class="status-item"><span class="emoji">${statusMap[data.status] || '❓'}</span><span class="msg ${data.status === 'error' ? 'err' : ''}">Job ${labelMap[data.status] || data.status}</span></div>`;
@@ -303,7 +305,9 @@ UPLOAD_FORM = """<!DOCTYPE html>
       html += `<div class="status-item"><span class="emoji">${statusMap[s] || '❓'}</span><span class="msg ${s === 'error' ? 'err' : s === 'done' ? 'ok' : 'pending'}">${escHtml(f.filename)} — ${f.message || labelMap[s] || s}</span></div>`;
     }
     statusItems.innerHTML = html;
-    document.getElementById('job-id-line').innerHTML = `Job ID: <code>${jobId}</code> &nbsp;·&nbsp; <a href="/api/journal/status/${jobId}" target="_blank" style="color:#6366f1;font-size:0.7rem">JSON</a>`;
+    if (jobId) {
+      document.getElementById('job-id-line').innerHTML = `Job ID: <code>${jobId}</code> &nbsp;·&nbsp; <a href="/api/journal/status/${jobId}" target="_blank" style="color:#6366f1;font-size:0.7rem">JSON</a>`;
+    }
   }
 
   function showResults(data) {
@@ -428,9 +432,9 @@ async def api_upload(
 
     update_job_status(job_id, "processing")
 
-    # ─── Stage 4+5 Pipeline (runs async in background) ───────────────────────
+    # ─── Enhanced Stage 4+5 Pipeline (runs async in background) ─────────────────
     async def run_pipeline():
-        journal_entries = []  # {date, country, vault_path, meta, filename, time_str}
+        all_entries = []  # {date, country, journal_path, meta, time_str, enriched_caption, vault_path}
 
         for fi in files_info:
             update_file_status(job_id, fi["filename"], "processing", "Extracting metadata...")
@@ -448,7 +452,7 @@ async def api_upload(
 
             update_file_status(job_id, fi["filename"], "processing", meta_summary)
 
-            # Determine date
+            # Determine date & time
             date_str = None
             time_str = None
             if meta["datetime"]:
@@ -492,46 +496,59 @@ async def api_upload(
                     update_file_status(job_id, fi["filename"], "processing",
                         f"Photo rotated to correct orientation, saved to {safe_country}/media/")
 
-            update_file_status(job_id, fi["filename"], "processing", "Updating journal entry...")
-
             # ─── Stage 5: Journal Integration ──────────────────────────────
             journal_path = get_journal_path(settings.VAULT_PATH, safe_country, date_str)
+            journal_existed = os.path.exists(journal_path)
 
-            # Create journal if doesn't exist
-            if not os.path.exists(journal_path):
+            if not journal_existed:
                 lat = meta.get("lat") or 0.0
                 lon = meta.get("lon") or 0.0
                 create_journal_entry(settings.VAULT_PATH, safe_country, date_str,
                                      lat=lat, lon=lon, day_num=1)
                 update_file_status(job_id, fi["filename"], "processing",
                     f"Created new journal: Travel/{safe_country}/{date_str} {safe_country}.md")
+            else:
+                # Update leaflet map if this photo has better GPS than the template coords
+                if meta.get("lat") is not None and meta.get("lon") is not None:
+                    updated = update_leaflet_coords(journal_path, meta["lat"], meta["lon"])
+                    if updated:
+                        update_file_status(job_id, fi["filename"], "processing",
+                            f"📍 Map marker updated with new coordinates")
 
-            # Determine caption
-            entry_caption = caption if caption else (meta.get("location_string") or "Travel moment")
+            # ─── Caption enrichment via MiniMax vision ───────────────────
+            update_file_status(job_id, fi["filename"], "processing", "Enriching caption with AI vision...")
+            raw_caption = caption if caption else ""
+            enriched_caption = enrich_caption_with_vision(
+                image_path=vault_dest,
+                user_caption=raw_caption,
+                location_hint=meta.get("location_string") or "",
+                activity_hint=raw_caption or "",
+            )
+            if enriched_caption != raw_caption:
+                update_file_status(job_id, fi["filename"], "processing",
+                    f"✍️ Caption enriched: {enriched_caption[:60]}...")
 
-            # Insert into journal timeline
+            # Insert into journal timeline with enriched caption
+            update_file_status(job_id, fi["filename"], "processing", "Updating journal entry...")
             insert_media_into_journal(
                 journal_path=journal_path,
                 time_str=time_str,
-                caption=entry_caption,
+                caption=enriched_caption,
                 vault_media_path=vault_dest,
                 is_video=is_video,
             )
 
-            update_file_status(job_id, fi["filename"], "done",
-                f"✅ Saved to Travel/{safe_country}/media/ + journal entry updated")
-
             # ─── Stage 6: AI DreamScape generation ────────────────────────
             update_file_status(job_id, fi["filename"], "processing", "Generating AI Dreamscape image...")
             ai_result = generate_dreamscape_image(
-                caption=entry_caption,
+                caption=enriched_caption,
                 location_string=meta.get("location_string") or "",
                 datetime_str=meta.get("datetime") or "",
                 media_type=meta["media_type"],
                 vault_path=settings.VAULT_PATH,
                 country=safe_country,
                 date_str=date_str,
-                time_str=time_str.replace(":", ""),
+                time_str=time_suffix,
             )
             ai_dream_scape_path = None
             ai_dream_scape_url = None
@@ -540,40 +557,76 @@ async def api_upload(
                 insert_ai_image_into_dreamscape(journal_path, ai_filename)
                 ai_dream_scape_path = ai_result["vault_dest"]
                 ai_dream_scape_url = f"obsidian://open?vault=WeeksObsidianVault&file=Travel/{safe_country}/media/{ai_filename}"
-                update_file_status(job_id, fi["filename"], "processing",
-                    f"🎨 DreamScape image generated for {time_str}")
+                update_file_status(job_id, fi["filename"], "done",
+                    f"🎨 DreamScape + journal entry updated")
             else:
-                update_file_status(job_id, fi["filename"], "processing",
-                    f"⚠️ AI image generation skipped: {ai_result.get('error', 'unknown error')}")
+                update_file_status(job_id, fi["filename"], "done",
+                    f"✅ Journal entry updated (AI DreamScape skipped)")
 
-            journal_entries.append({
-                "date":       date_str,
-                "country":    safe_country,
-                "vault_path": vault_dest,
-                "meta":       meta,
-                "filename":   fi["filename"],
-                "time_str":   time_str,
+            all_entries.append({
+                "date":             date_str,
+                "country":          safe_country,
+                "journal_path":     journal_path,
+                "vault_path":       vault_dest,
+                "meta":             meta,
+                "filename":         fi["filename"],
+                "time_str":         time_str,
+                "enriched_caption": enriched_caption,
                 "dream_scape_path": ai_dream_scape_path,
                 "dream_scape_url":  ai_dream_scape_url,
             })
 
-        # Build result summary
-        if journal_entries:
-            countries = list(set(e["country"] for e in journal_entries))
+        # ─── End of job: generate and write MochiMon daily summary ─────────
+        if all_entries:
+            countries = list(set(e["country"] for e in all_entries))
             primary = countries[0]
-            date_str = journal_entries[0]["date"]
-            journal_file = f"{primary}/{date_str} {primary}.md"
+            date_str_final = all_entries[0]["date"]
+
+            # Read date for readable format
+            try:
+                dt = datetime.strptime(date_str_final, "%Y-%m-%d")
+            except Exception:
+                dt = datetime.now()
+            day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            month_names = ["January", "February", "March", "April", "May", "June",
+                           "July", "August", "September", "October", "November", "December"]
+            date_readable = f"{day_names[dt.weekday()]}, {dt.day} {month_names[dt.month - 1]} {dt.year}"
+
+            # Build entries for summary generation
+            summary_entries = [
+                {
+                    "time":             e["time_str"],
+                    "enriched_caption": e["enriched_caption"],
+                    "location":         e["meta"].get("location_string") or "",
+                }
+                for e in all_entries
+            ]
+
+            summary_text = generate_daily_mochimon_summary(
+                entries=summary_entries,
+                country=primary,
+                date_readable=date_readable,
+            )
+
+            # Update MochiMon summary in all unique journal files
+            journal_paths_updated = []
+            for e in all_entries:
+                if e["journal_path"] not in journal_paths_updated:
+                    update_mochimon_summary(e["journal_path"], summary_text)
+                    journal_paths_updated.append(e["journal_path"])
+
+            journal_file = f"{primary}/{date_str_final} {primary}.md"
             journal_url = f"obsidian://open?vault=WeeksObsidianVault&file=Travel/{journal_file}"
-            # Pick first DreamScape image as preview
-            ds_path = next((e["dream_scape_path"] for e in journal_entries if e["dream_scape_path"]), None)
-            ds_url = next((e["dream_scape_url"] for e in journal_entries if e["dream_scape_url"]), None)
+            ds_path = next((e["dream_scape_path"] for e in all_entries if e["dream_scape_path"]), None)
+            ds_url = next((e["dream_scape_url"] for e in all_entries if e["dream_scape_url"]), None)
             update_job_status(job_id, "done", json.dumps({
                 "journal_file":     journal_file,
                 "journal_url":      journal_url,
                 "dream_scape_url":  ds_url,
                 "dream_scape_path": ds_path,
-                "entries_count":    len(journal_entries),
+                "entries_count":    len(all_entries),
                 "countries":        countries,
+                "mochimon_summary": summary_text,
             }))
         else:
             update_job_status(job_id, "done", json.dumps({

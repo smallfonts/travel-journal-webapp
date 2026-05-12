@@ -379,19 +379,42 @@ def insert_ai_image_into_dreamscape(
         content = insert_after(content, marker,
             build_dreamscape_block(ai_image_filename))
     else:
-        # Dreamscape section exists but marker gone — append before SUMMARY
-        summary_marker = "> [!SUMMARY] 🍡 MochiMon says..."
-        if summary_marker in content:
-            content = insert_before(content, summary_marker,
-                build_dreamscape_block(ai_image_filename) + "\n")
-        else:
+        # Marker replaced by first cards-album — find the last cards-album
+        # inside the Dreamscape section and insert after it
+        dreamscape_head = "# ☁️Mochi's Dreamscape"
+        timeline_head = "# Travel Timeline"
+        ds_start = content.find(dreamscape_head)
+        tl_start = content.find(timeline_head)
+        if ds_start == -1:
             # No Dreamscape at all — create it before Travel Timeline
-            timeline_marker = "# Travel Timeline"
-            if timeline_marker in content:
+            if tl_start != -1:
                 dreamscape = "# ☁️Mochi's Dreamscape\n\n" + build_dreamscape_block(ai_image_filename) + "\n\n"
-                content = insert_before(content, timeline_marker, dreamscape)
+                content = insert_before(content, timeline_head, dreamscape)
             else:
-                # Fallback: append at end
+                content += "\n\n" + build_dreamscape_block(ai_image_filename)
+        else:
+            # Dreamscape exists — find search window (up to Travel Timeline or end)
+            search_from = ds_start + len(dreamscape_head)
+            search_to = tl_start if tl_start != -1 else len(content)
+            ds_region = content[search_from:search_to]
+            # Find all cards-album blocks in Dreamscape
+            last_album_end = -1
+            pos = 0
+            while True:
+                blk = ds_region.find("```cards-album", pos)
+                if blk == -1:
+                    break
+                end = ds_region.find("```", blk + 14)
+                if end == -1:
+                    break
+                last_album_end = search_from + end + 3
+                pos = end + 3
+            if last_album_end != -1:
+                content = content[:last_album_end] + "\n" + build_dreamscape_block(ai_image_filename) + content[last_album_end:]
+            elif tl_start != -1:
+                content = insert_before(content, timeline_head,
+                    build_dreamscape_block(ai_image_filename) + "\n")
+            else:
                 content += "\n\n" + build_dreamscape_block(ai_image_filename)
 
     write_journal(journal_path, content)
@@ -458,3 +481,24 @@ def get_mochimon_summary(journal_path: str) -> Optional[str]:
         else:
             break
     return " ".join(lines)
+
+
+def update_leaflet_coords(journal_path: str, lat: float, lon: float) -> bool:
+    """
+    Update the leaflet coordinate block in the journal entry.
+    Replaces the coordinate line with updated lat/lon.
+    Returns True if updated, False if no leaflet block found.
+    """
+    content = read_journal(journal_path)
+    if content is None:
+        return False
+
+    # Match: coordinate: [lat, lon] or coordinate: [lat,lon]
+    leaflet_pattern = re.compile(r"coordinate:\s*\[[\d.,\-]+\]")
+    new_coord = f"coordinate: [{lat}, {lon}]"
+
+    if leaflet_pattern.search(content):
+        content = leaflet_pattern.sub(new_coord, content, count=1)
+        write_journal(journal_path, content)
+        return True
+    return False
