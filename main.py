@@ -445,7 +445,15 @@ async def api_upload(
     async def run_pipeline():
         all_entries = []  # {date, country, journal_path, meta, time_str, enriched_caption, vault_path}
 
+        # Deduplicate by original filename — skip if already processed in this job
+        processed_names = set()
         for fi in files_info:
+            if fi["filename"] in processed_names:
+                update_file_status(job_id, fi["filename"], "done",
+                    "Duplicate — already processed in this job")
+                continue
+            processed_names.add(fi["filename"])
+
             update_file_status(job_id, fi["filename"], "processing", "Extracting metadata...")
 
             meta = extract_metadata(fi["cache_path"])
