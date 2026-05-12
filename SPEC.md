@@ -17,11 +17,10 @@
 - [ ] Mobile-responsive, minimal clean styling
 
 ## Stage 3 — Internal REST API
-- [ ] `POST /api/journal/upload` — multipart endpoint with `X-API-Key` auth
-- [ ] Shared secret validation middleware
+- [ ] `POST /api/journal/upload` — multipart endpoint (no auth — accessible via Tailscale only)
 - [ ] `GET /api/journal/status/{job_id}` — polling endpoint
 - [ ] `GET /health` — liveness check
-- [ ] Verify: API key rejection for missing/wrong key
+- [ ] Verify: upload a test file and check response
 
 ## Stage 4 — Media Processing Pipeline
 - [ ] File cache step — copy uploaded files to Hermes image/video cache
