@@ -55,11 +55,12 @@
 - [x] Verify: 96 tests passing, pushed at `cf1550e`
 
 ## Stage 7 — Processing Status + Result Page
-- [ ] Progress tracking (in-memory job store with job_id)
-- [ ] Per-file status: ✅ saved, 📍 location, 🗺️ marker added
-- [ ] Result page with Obsidian journal link
-- [ ] DreamScape image preview
-- [ ] "Upload more" button
+- [x] Per-file status: ✅ saved, 📍 location, 🗺️ marker added (wired in run_pipeline, message updates per stage)
+- [x] Result page with Obsidian journal link — `showResults()` renders `journal_file` + `journal_url` from result JSON
+- [x] DreamScape image preview — `showResults()` uses `/api/media/{country}/{filename}` to display DreamScape JPEG in browser (obsidian:// doesn't work in browser)
+- [x] `/api/media/{country}/{filename}` endpoint — serves vault media files for browser display
+- [x] "Upload more" button — `resetForm()` clears form, status panel, result links
+- [x] Verify: 96 tests passing, pushed at `6533ad8`
 
 ## Stage 8 — Integration with Hermes Gateway
 - [ ] Expose via gateway reverse proxy rule (`/travel-journal/` → `http://localhost:8000/`)
