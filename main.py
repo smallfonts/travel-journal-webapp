@@ -285,7 +285,7 @@ UPLOAD_FORM = """<!DOCTYPE html>
           clearInterval(interval);
           submitBtn.disabled = false;
           submitBtn.textContent = 'Upload & Process';
-          if (data.status === 'done') showResults(data);
+          if (data.status === 'done') showResults(data, jobId);
         }
       } catch(err) {
         clearInterval(interval);
@@ -310,9 +310,15 @@ UPLOAD_FORM = """<!DOCTYPE html>
     }
   }
 
-  function showResults(data) {
+  function showResults(data, jobId) {
     const rl = document.getElementById('result-links');
     const jl = document.getElementById('journal-link');
+    // Show jobId reference in results
+    if (jobId) {
+      const jobLine = document.createElement('div');
+      jobLine.style.cssText = 'font-size:0.75rem;color:#6366f1;margin-bottom:0.5rem;';
+      jobLine.textContent = `Job ${jobId}`;
+    }
     if (data.result) {
       jl.href = data.result.journal_url || '#';
       jl.textContent = data.result.journal_file || 'Open journal entry';
